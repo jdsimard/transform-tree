@@ -4,10 +4,28 @@
 
 
 
+transform_tree_node *create_transform_tree_node(int uid, transform_tree_node *parent, double (*transform_fn)(double), double (*callback_fn)(struct transform_tree_node*, double), void *flag_addr) {
+    transform_tree_node *new_node = NULL;
+
+    // new root node, initializaed with transform function
+    if (parent == NULL) new_node = new_transform_tree(transform_fn);
+    // new child node, initialized with transform function
+    else new_node = new_child_node(parent, transform_fn);
+    // check memory was allocated properly
+    if (new_node == NULL) return NULL;
+
+    // initial the node with uide, callback function, and flag address
+    set_node_uid(new_node, uid);
+    set_node_callback_function(new_node, callback_fn, flag_addr);
+    return new_node;
+}
+
+
+
 transform_tree_node *new_transform_tree(double (*node_function)(double)) {
     transform_tree_node *node = malloc(sizeof(transform_tree_node));
     if (node != NULL) {
-        node->node_function = node_function;
+        node->transform_fn = node_function;
         node->children = NULL;
         node->num_children = 0;
         node->callback_function = NULL;
@@ -19,26 +37,26 @@ transform_tree_node *new_transform_tree(double (*node_function)(double)) {
 
 
 
-void delete_transform_tree(transform_tree_node **head_ref) {
+void delete_transform_tree(transform_tree_node **root_ref) {
     // use a double pointer to the head node so that the head node pointer call NULL itself after free
 
     // depth-first / recursive delete
-    transform_tree_node *head = *head_ref;
+    transform_tree_node *root = *root_ref;
 
-    if (head->num_children > 0) {
+    if (root->num_children > 0) {
         // if the node has children, delete each child node first
-        while (head->num_children > 0) {
-            delete_transform_tree(&(head->children[head->num_children - 1]));
-            //head->children[head->num_children - 1] = NULL;
-            head->num_children -= 1;
+        while (root->num_children > 0) {
+            delete_transform_tree(&(root->children[root->num_children - 1]));
+            //root->children[head->num_children - 1] = NULL;
+            root->num_children -= 1;
         }
         // now delete the memory allocated for storing pointers to child nodes
-        free(head->children);
-        head->children = NULL;
+        free(root->children);
+        root->children = NULL;
     }
     // now the the child nodes are deleted, the node can delete itself
-    free(head);
-    *head_ref = NULL;
+    free(root);
+    *root_ref = NULL;
 }
 
 
@@ -48,7 +66,7 @@ transform_tree_node *new_child_node(transform_tree_node *parent, double (*node_f
     else {
         transform_tree_node *new_child = malloc(sizeof(transform_tree_node));
         if (new_child != NULL) {
-            new_child->node_function = node_function;
+            new_child->transform_fn = node_function;
             new_child->children = NULL;
             new_child->num_children = 0;
             new_child->callback_function = NULL;
@@ -99,32 +117,32 @@ void set_node_uid(transform_tree_node *node, int uid) {
 
 
 
-void compute_transform_tree(transform_tree_node *head, double input_value) {
-    if (head == NULL) return;
+void compute_transform_tree(transform_tree_node *root, double input_value) {
+    if (root == NULL) return;
     
     double next_value = input_value;
     // if the node has a callback function, call it, passing the input value through
-    if (head->callback_function != NULL){
-        next_value = head->callback_function(head, next_value);
+    if (root->callback_function != NULL){
+        next_value = root->callback_function(root, next_value);
     }
     // if the node has a node function, call it, passing the input value through
-    if (head->node_function != NULL) {
-        next_value = head->node_function(next_value);
+    if (root->transform_fn != NULL) {
+        next_value = root->transform_fn(next_value);
     }
 
     // compute the transform sub tree for each child of this node using the new input value
-    for (int i = 0; i < head->num_children; i++) {
-        compute_transform_tree(head->children[i], next_value);
+    for (int i = 0; i < root->num_children; i++) {
+        compute_transform_tree(root->children[i], next_value);
     }
 }
 
 
 
-double callback_print_node_input_and_output(transform_tree_node *node, double val) {
+double callback_print_io(transform_tree_node *node, double val) {
     if (node == NULL) return val;
 
     
-    if (node->node_function != NULL) printf("Node: %i, input: %f, output: %f\n", node->uid, val, node->node_function(val));
+    if (node->transform_fn != NULL) printf("Node: %i, input: %.2f, output: %.2f\n", node->uid, val, node->transform_fn(val));
     else printf("Node: %i, input: %f, output: %f\n", node->uid, val, val);
 
     return val;
@@ -132,10 +150,10 @@ double callback_print_node_input_and_output(transform_tree_node *node, double va
 
 
 
-double callback_retrieve_node_output_in_flag(transform_tree_node *node, double val) {
+double callback_write_node_output_in_flag(transform_tree_node *node, double val) {
     if (node != NULL && node->callback_flag_addr != NULL) {
         double *output_flag_ptr = node->callback_flag_addr;
-        if (node->node_function != NULL) *output_flag_ptr = node->node_function(val);
+        if (node->transform_fn != NULL) *output_flag_ptr = node->transform_fn(val);
         else *output_flag_ptr = val;
     }
     else return val;
@@ -143,8 +161,8 @@ double callback_retrieve_node_output_in_flag(transform_tree_node *node, double v
 
 
 
-double callback_print_io_and_retrieve_value_in_flag(transform_tree_node *node, double val) {
-    return callback_retrieve_node_output_in_flag(node, callback_print_node_input_and_output(node, val));
+double callback_print_io_and_write_output_in_flag(transform_tree_node *node, double val) {
+    return callback_write_node_output_in_flag(node, callback_print_io(node, val));
 }
 
 
@@ -163,12 +181,12 @@ void print_transform_tree_base(transform_tree_node *node, int current_depth, int
 
 
 
-void print_transform_tree(transform_tree_node *head) {
+void print_transform_tree(transform_tree_node *root) {
     //recursive (left-to-right)
-    if (head != NULL) {
-        printf("head (%i)\n", head->uid);
-        for (int i = 0; i < head->num_children; i++) {
-            print_transform_tree_base(head->children[i], 0, i);
+    if (root != NULL) {
+        printf("root (%i)\n", root->uid);
+        for (int i = 0; i < root->num_children; i++) {
+            print_transform_tree_base(root->children[i], 0, i);
         }
     }
     else {
@@ -180,7 +198,7 @@ void print_transform_tree(transform_tree_node *head) {
 
 void print_transform_tree_node(transform_tree_node *node) {
     if (node != NULL) {
-        printf("Node - uid: %i, node_function: %p, children: %p, num_children: %i, callback_function: %p, callback_flag: %p\n", node->uid, node->node_function, node->children, node->num_children, node->callback_function, node->callback_flag_addr);
+        printf("Node - uid: %i, node_function: %p, children: %p, num_children: %i, callback_function: %p, callback_flag: %p\n", node->uid, node->transform_fn, node->children, node->num_children, node->callback_function, node->callback_flag_addr);
     }
     else {
         printf("empty node\n");

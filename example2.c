@@ -3,14 +3,13 @@
 
 #include "transform_tree\transform_tree.h"
 
-// gcc .\example.c -o example.exe .\transform_tree\transform_tree.c
+// gcc .\example2.c -o example2.exe .\transform_tree\transform_tree.c
 
 
 double myAbs(double val);
 double myDouble(double val);
 double myTriple(double val);
 double mySquare(double val);
-
 double pass(double val);
 
 int main(void) {
